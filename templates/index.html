@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dynamic Ledger Engine</title>
+  <link rel="stylesheet" href="{{ url_for('static', path='/app.css') }}" />
+</head>
+<body>
+  <main class="shell">
+    <section class="hero">
+      <div>
+        <p class="eyebrow">Local-First Ledger Query Engine</p>
+        <h1>直接提问</h1>
+        <p class="lede">先把查询核心恢复并跑稳。多账本统计、去重分析、结果导出都在本地完成。</p>
+      </div>
+      <div class="meta-panel">
+        <div class="meta-label">当前账本数</div>
+        <div class="meta-value">{{ ledger_summaries | length }}</div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">Priority 01</p>
+          <h2>查询</h2>
+        </div>
+        <span class="panel-note">默认 `auto` 先全局筛选候选账本，再自动收束</span>
+      </div>
+      <form class="query-form" method="get" action="/query">
+        <div class="field field-wide">
+          <label for="q">问题</label>
+          <textarea id="q" name="q" rows="4" placeholder="例如：一共有多少条记录 / 某部门有多少人 / 某联系人的电话 / 有多少条记录带IP">{{ query_form.question }}</textarea>
+        </div>
+        <div class="field">
+          <label for="ledger">账本范围</label>
+          <select id="ledger" name="ledger">
+            {% for option in ledger_options %}
+            <option value="{{ option }}" {% if option == query_form.ledger %}selected{% endif %}>{{ option }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="actions">
+          <button type="submit">立即查询</button>
+        </div>
+      </form>
+    </section>
+
+    {% if query_output %}
+    <section class="panel">
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">Answer</p>
+          <h2>查询结果</h2>
+        </div>
+        <span class="panel-note">本地检索结果直出</span>
+      </div>
+
+      <div class="answer-box">{{ query_output.answer }}</div>
+      <details class="result-section" open>
+        <summary>账本范围与统计</summary>
+        <div class="details-body">
+          <div class="ledger-scope">
+            <div>纳入账本：{{ query_output.included_ledgers | join('、') }}</div>
+            {% if query_output.excluded_ledgers %}
+            <div>已排除：{{ query_output.excluded_ledgers | join('、') }}</div>
+            {% endif %}
+          </div>
+
+          <div class="ledger-grid compact-grid">
+            {% for card in query_output.ledger_cards %}
+            <article class="ledger-card">
+              <h3>{{ card.ledger_name }}</h3>
+              <div>总计 {{ card.total_count }} 条</div>
+              <div>当前命中 {{ card.hit_count }} 条</div>
+            </article>
+            {% endfor %}
+          </div>
+
+          {% if query_output.cross_ledger_stats %}
+          <section class="duplicate-panel">
+            <h3>多账本去重统计</h3>
+            <p>按{{ query_output.cross_ledger_stats.dedupe_label }}去重后共 {{ query_output.cross_ledger_stats.total_unique }} 条。</p>
+            <div class="ledger-grid compact-grid">
+              {% for item in query_output.cross_ledger_stats.ledger_summaries %}
+              <article class="ledger-card">
+                <h3>{{ item.ledger_name }}</h3>
+                <div>命中行数 {{ item.raw_count }} 条</div>
+                <div>提取值 {{ item.value_count }} 条</div>
+                <div>去重后 {{ item.unique_count }} 条</div>
+                <div>本账本重复 {{ item.duplicate_count }} 条</div>
+              </article>
+              {% endfor %}
+            </div>
+            {% if query_output.cross_ledger_stats.overlap_items %}
+            <div class="duplicate-list">
+              {% for item in query_output.cross_ledger_stats.overlap_items %}
+              <div class="duplicate-item">
+                <strong>{{ item.value }}</strong>
+                <span>{{ item.ledgers | join('、') }}</span>
+              </div>
+              {% endfor %}
+            </div>
+            {% endif %}
+          </section>
+          {% endif %}
+
+          {% if query_output.grouped_rows %}
+          <section class="group-panel">
+            <h3>分组统计</h3>
+            <div class="group-table">
+              {% for label, count in query_output.grouped_rows %}
+              <div class="group-row">
+                <span>{{ label }}</span>
+                <strong>{{ count }}</strong>
+              </div>
+              {% endfor %}
+            </div>
+          </section>
+          {% endif %}
+        </div>
+      </details>
+
+      <details class="result-section" {% if query_output.total_count <= query_output.page_size %}open{% endif %}>
+        <summary>明细结果与导出</summary>
+        <div class="details-body">
+          <div class="result-toolbar">
+            <div>
+              第 {{ query_output.page }} / {{ query_output.total_pages }} 页，当前展示 {{ query_output.showing_from }}-{{ query_output.showing_to }} / {{ query_output.total_count }} 条。
+            </div>
+            {% if query_output.export_token %}
+            <a class="ghost-button" href="/export/current?token={{ query_output.export_token }}">导出本次查询结果 CSV</a>
+            {% endif %}
+          </div>
+
+          {% if query_output.total_pages > 1 %}
+          <div class="pagination">
+            {% for page_no in range(1, query_output.total_pages + 1) %}
+            <a href="/query?q={{ query_form.question | urlencode }}&ledger={{ query_form.ledger | urlencode }}&page={{ page_no }}" class="{% if page_no == query_output.page %}active{% endif %}">{{ page_no }}</a>
+            {% endfor %}
+          </div>
+          {% endif %}
+
+          <div class="record-grid">
+            {% for card in query_output.cards %}
+            <article class="record-card">
+              <div class="record-head">
+                <div>
+                  <h3>{{ card.title }}</h3>
+                  <p>{{ card.subtitle }}</p>
+                </div>
+                <span class="tag">{{ card.ledger_name }}</span>
+              </div>
+              <div class="pair-grid">
+                {% for label, value in card.pairs %}
+                <div class="pair">
+                  <span>{{ label }}</span>
+                  <strong>{{ value }}</strong>
+                </div>
+                {% endfor %}
+              </div>
+            </article>
+            {% endfor %}
+          </div>
+        </div>
+      </details>
+    </section>
+    {% endif %}
+
+    <section class="panel split">
+      <div>
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">Priority 02</p>
+            <h2>批量导入台账</h2>
+          </div>
+          <span class="panel-note">先恢复最基本导入链路</span>
+        </div>
+        <form class="import-form" method="post" action="/import" enctype="multipart/form-data">
+          <div class="field field-wide">
+            <label for="files">文件</label>
+            <input id="files" type="file" name="files" multiple />
+          </div>
+          <div class="field">
+            <label for="mode">导入方式</label>
+            <select id="mode" name="mode">
+              <option value="each" {% if import_form.mode == 'each' %}selected{% endif %}>每个文件单独成为一个账本</option>
+              <option value="merge" {% if import_form.mode == 'merge' %}selected{% endif %}>全部合并到同一账本</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="on_conflict">重复账本处理</label>
+            <select id="on_conflict" name="on_conflict">
+              <option value="create-copy" {% if import_form.on_conflict == 'create-copy' %}selected{% endif %}>自动创建副本账本</option>
+              <option value="replace" {% if import_form.on_conflict == 'replace' %}selected{% endif %}>覆盖已有账本</option>
+              <option value="merge" {% if import_form.on_conflict == 'merge' %}selected{% endif %}>继续并入已有账本</option>
+              <option value="reject" {% if import_form.on_conflict == 'reject' %}selected{% endif %}>发现重复直接拒绝</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="duplicate_strategy">文件内重复记录处理</label>
+            <select id="duplicate_strategy" name="duplicate_strategy">
+              <option value="keep-last" {% if import_form.duplicate_strategy == 'keep-last' %}selected{% endif %}>保留最后一条</option>
+              <option value="keep-first" {% if import_form.duplicate_strategy == 'keep-first' %}selected{% endif %}>保留第一条</option>
+              <option value="merge" {% if import_form.duplicate_strategy == 'merge' %}selected{% endif %}>合并非空字段</option>
+              <option value="error" {% if import_form.duplicate_strategy == 'error' %}selected{% endif %}>发现重复直接报错</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="merged_ledger">合并账本名</label>
+            <input id="merged_ledger" name="merged_ledger" value="{{ import_form.merged_ledger }}" />
+          </div>
+          <div class="actions">
+            <button type="submit">开始导入</button>
+          </div>
+        </form>
+
+        {% if import_result %}
+        <div class="import-result {% if import_result.ok %}ok{% else %}error{% endif %}">
+          {% if import_result.ok %}
+            <strong>导入完成</strong>
+            <ul>
+              {% for item in import_result.results %}
+              <li>{{ item.ledger }}：导入 {{ item.imported }}，更新 {{ item.updated }}，重复 {{ item.duplicates }}</li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <strong>导入失败</strong>
+            <p>{{ import_result.message }}</p>
+          {% endif %}
+        </div>
+        {% endif %}
+        {% if ledger_action_result %}
+        <div class="import-result {% if ledger_action_result.ok %}ok{% else %}error{% endif %}">
+          <strong>{% if ledger_action_result.ok %}账本操作完成{% else %}账本操作失败{% endif %}</strong>
+          <p>{{ ledger_action_result.message }}</p>
+        </div>
+        {% endif %}
+      </div>
+
+      <div>
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">Coverage</p>
+            <h2>账本概览</h2>
+          </div>
+        </div>
+        <div class="ledger-grid">
+          {% for item in ledger_summaries %}
+          <article class="ledger-card">
+            <div class="ledger-card-head">
+              <h3>{{ item.ledger_name }}</h3>
+              <form method="post" action="/ledger/delete" class="inline-form" onsubmit="return confirm('确认删除账本 {{ item.ledger_name }} 吗？');">
+                <input type="hidden" name="ledger_name" value="{{ item.ledger_name }}" />
+                <button type="submit" class="danger-button">删除</button>
+              </form>
+            </div>
+            <div>活跃记录 {{ item.count }} 条</div>
+          </article>
+          {% endfor %}
+        </div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

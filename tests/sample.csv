@@ -1,0 +1,4 @@
+No,Name,Location,Brand,Model,IP,Transport,Status,Remark
+1,Example Site A,Zone-A,DAHUA,DH-SD-6CMXK,198.51.100.10,4G,active,phase-a
+2,Example Site B,Zone-B,HIKVISION,DS-2CD,198.51.100.11,dedicated,active,primary
+3,Example Site C,Zone-B,DAHUA,DH-SD-6CMXK,198.51.100.12,4G,active,backup
